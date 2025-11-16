@@ -1,6 +1,8 @@
 package com.university.moodle.servlet;
 
+import com.university.moodle.model.Admin;
 import com.university.moodle.model.Student;
+import com.university.moodle.model.Teacher;
 import com.university.moodle.model.User;
 import com.university.service.AuthService;
 import jakarta.servlet.ServletException;
@@ -64,11 +66,32 @@ public class ProfileServlet extends HttpServlet {
         request.setAttribute("initial", initial);
 
         if (user instanceof Student student) {
+            request.setAttribute("userType", "student");
             request.setAttribute("isStudent", true);
+            request.setAttribute("isTeacher", false);
+            request.setAttribute("isAdmin", false);
             request.setAttribute("groupId", student.getGroupId());
             request.setAttribute("submissionCount",
                     student.getSubmissionID() != null ? student.getSubmissionID().size() : 0);
-        } else {
+
+        }else if (user instanceof Teacher teacher) {
+            request.setAttribute("userType", "teacher");
+            request.setAttribute("isStudent", false);
+            request.setAttribute("isTeacher", true);
+            request.setAttribute("isAdmin", false);
+            request.setAttribute("specialization", teacher.getSpecialization());
+            request.setAttribute("groupCount",
+                    teacher.getGroupID() != null ? teacher.getGroupID().size() : 0);
+            request.setAttribute("assignmentCount",
+                    teacher.getAssignmentID() != null ? teacher.getAssignmentID().size() : 0);
+        }else if (user instanceof Admin admin) {
+            request.setAttribute("userType", "admin");
+            request.setAttribute("isStudent", false);
+            request.setAttribute("isTeacher", false);
+            request.setAttribute("isAdmin", true);
+            System.out.println(admin);
+        }
+        else {
             request.setAttribute("isStudent", false);
         }
 

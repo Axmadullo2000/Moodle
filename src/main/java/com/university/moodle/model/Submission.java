@@ -2,7 +2,6 @@ package com.university.moodle.model;
 
 import com.university.moodle.enums.SubmissionStatus;
 import lombok.Data;
-import lombok.Getter;
 
 import java.time.LocalDateTime;
 
@@ -14,9 +13,11 @@ public class Submission {
     private String content;
     private String fileUrl;
     private LocalDateTime submittedAt;
-    @Getter
     private SubmissionStatus status;
     private String gradedId;
+    private Integer score;
+    private String feedback;
+    private LocalDateTime gradedAt;
 
     public Submission() {
         this.submittedAt = LocalDateTime.now();

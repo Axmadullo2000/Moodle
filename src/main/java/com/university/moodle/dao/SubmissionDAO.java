@@ -1,14 +1,23 @@
 package com.university.moodle.dao;
 
 import com.university.moodle.model.Submission;
-import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-@ApplicationScoped
+
 public class SubmissionDAO extends AbstractDAO<Submission> {
+    private static SubmissionDAO submissionDAO;
+    private SubmissionDAO() {}
+
+    public static SubmissionDAO getInstance() {
+        if (submissionDAO == null) {
+            submissionDAO = new SubmissionDAO();
+        }
+
+        return submissionDAO;
+    }
 
     @Override
     public List<Submission> getItems() {

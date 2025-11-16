@@ -1,13 +1,24 @@
 package com.university.moodle.dao;
 
 import com.university.moodle.model.Grade;
-import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
 import java.util.Optional;
 
-@ApplicationScoped
+
 public class GradeDAO extends AbstractDAO<Grade> {
+    private static GradeDAO instance;
+
+    private GradeDAO() {}
+
+    public static GradeDAO getInstance() {
+        if (instance == null) {
+            instance = new GradeDAO();
+        }
+
+        return instance;
+    }
+
     @Override
     public List<Grade> getItems() {
         return items;

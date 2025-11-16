@@ -1,45 +1,48 @@
 package com.university.service;
 
 import com.university.moodle.dao.AssignmentDAO;
-import com.university.moodle.dao.GradeDAO;
 import com.university.moodle.dao.StudentDAO;
 import com.university.moodle.dao.SubmissionDAO;
+import com.university.moodle.enums.SubmissionStatus;
 import com.university.moodle.model.Assignment;
-import com.university.moodle.model.Grade;
 import com.university.moodle.model.Student;
 import com.university.moodle.model.Submission;
 
-import com.university.moodle.enums.SubmissionStatus;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-@ApplicationScoped
 public class SubmissionService {
-    @Inject
-    private SubmissionDAO submissionDAO;
 
-    @Inject
-    private AssignmentDAO assignmentDAO;
+    private final SubmissionDAO submissionDAO = SubmissionDAO.getInstance();
+    private final AssignmentDAO assignmentDAO = AssignmentDAO.getInstance();
+    private final StudentDAO studentDAO = StudentDAO.getInstance();
 
-    @Inject
-    private StudentDAO studentDAO;
+    public Assignment getAssignmentById(String assignmentId) {
+        Optional<Assignment> assignment = assignmentDAO.findById(assignmentId);
+        if (assignment.isPresent()) {
+            return assignment.get();
+        } else {
+            throw new RuntimeException("Assignment not found");
+        }
+    }
 
-    @Inject
-    private GradeDAO gradeDAO;
+    public Submission submitAssignment(String assignmentId, String studentId, String content, String fileUrl) {
 
-    public Submission submitAssignment(String assignmentId, String studentId,
-                                       String content, String fileUrl) {
         Assignment assignment = assignmentDAO.findById(assignmentId)
                 .orElseThrow(() -> new RuntimeException("Assignment not found"));
 
         Student student = studentDAO.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        if (submissionDAO.findByAssignmentAndStudent(assignmentId, studentId).isPresent()) {
-            throw new RuntimeException("Assignment already exists");
+        // проверка: есть ли уже отправка?
+        submissionDAO.findByAssignmentAndStudent(assignmentId, studentId)
+                .ifPresent(s -> { throw new RuntimeException("Submission already exists"); });
+
+        // дедлайн
+        if (LocalDateTime.now().isAfter(assignment.getDeadline())) {
+            throw new RuntimeException("Deadline is over — submission not allowed");
         }
 
         Submission submission = new Submission();
@@ -47,41 +50,19 @@ public class SubmissionService {
         submission.setStudentId(studentId);
         submission.setContent(content);
         submission.setFileUrl(fileUrl);
-
-        if (LocalDateTime.now().isAfter(assignment.getDeadline())) {
-            submission.setStatus(SubmissionStatus.LATE);
-        }
+        submission.setStatus(SubmissionStatus.SUBMITTED);
 
         Submission saved = submissionDAO.save(submission);
 
-        student.getSubmissionID().add(saved.getId());
-        studentDAO.save(student);
-
+        // привязка к assignment
+        if (assignment.getSubmissionID() == null) assignment.setSubmissionID(new ArrayList<>());
         assignment.getSubmissionID().add(saved.getId());
         assignmentDAO.save(assignment);
 
-        return saved;
-    }
-
-    public Grade gradeSubmission(String submissionId, Integer score, String feedback) {
-        Submission submission = submissionDAO.findById(submissionId)
-                .orElseThrow(() -> new RuntimeException("Submission not found"));
-
-        if (score < 0 || score > 100) {
-            throw new RuntimeException("Score must be between 0 and 100");
-        }
-
-        Grade grade = new Grade();
-
-        grade.setSubmissionID(submissionId);
-        grade.setScore(score);
-        grade.setFeedback(feedback);
-
-        Grade saved = gradeDAO.save(grade);
-
-        submission.setGradedId(saved.getId());
-        submission.setStatus(SubmissionStatus.GRADED);
-        submissionDAO.save(submission);
+        // привязка к student
+        if (student.getSubmissionID() == null) student.setSubmissionID(new ArrayList<>());
+        student.getSubmissionID().add(saved.getId());
+        studentDAO.save(student);
 
         return saved;
     }
@@ -94,8 +75,17 @@ public class SubmissionService {
         return submissionDAO.findByStudent(studentId);
     }
 
-    public Submission getSubmission(String id) {
-        return submissionDAO.findById(id)
+
+    public void gradeSubmission(String submissionId, int grade) {
+        Submission submission = submissionDAO.findById(submissionId)
                 .orElseThrow(() -> new RuntimeException("Submission not found"));
+
+        submission.setScore(grade);
+        submission.setStatus(SubmissionStatus.GRADED);
+        submission.setGradedAt(LocalDateTime.now());
+
+        submissionDAO.save(submission);
     }
+
 }
+

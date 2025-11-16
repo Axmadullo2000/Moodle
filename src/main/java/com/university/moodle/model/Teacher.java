@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @EqualsAndHashCode(callSuper = true)
@@ -18,7 +19,16 @@ public class Teacher extends User {
     public Teacher(List<String> groupID, List<String> assignmentID) {
         super();
         setRole(UserRole.TEACHER);
-        this.groupID = groupID;
+        this.groupID = groupID != null ? groupID : new ArrayList<String>();
         this.assignmentID = assignmentID;
+    }
+
+    @Override
+    public String toString() {
+        return super.toString() + "Teacher{" +
+                "specialization='" + specialization + '\'' +
+                ", groupID=" + groupID +
+                ", assignmentID=" + assignmentID +
+                '}';
     }
 }

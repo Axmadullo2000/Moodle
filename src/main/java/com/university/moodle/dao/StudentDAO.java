@@ -2,21 +2,26 @@ package com.university.moodle.dao;
 
 import com.university.moodle.model.Student;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class StudentDAO extends AbstractDAO<Student> {
-    private static StudentDAO instance;
+    private static StudentDAO studentDAO;
 
-    private StudentDAO() {
-        super();
+    private StudentDAO() {}
+
+    public static StudentDAO getInstance() {
+        if (studentDAO == null) {
+            studentDAO = new StudentDAO();
+        }
+        return studentDAO;
     }
 
-    public static synchronized StudentDAO getInstance() {
-        if (instance == null) {
-            instance = new StudentDAO();
-        }
-        return instance;
+    @Override
+    public List<Student> getItems() {
+        return new ArrayList<>(items);
     }
 
     @Override
@@ -29,33 +34,90 @@ public class StudentDAO extends AbstractDAO<Student> {
         return student.getId();
     }
 
-    @Override
-    public List<Student> getItems() {
-        return items;
-    }
-
-    public Optional<Student> findByGroupId(String groupId) {
-        return items.stream()
-                .filter(student -> student.getGroupId() != null && student.getGroupId().equals(groupId))
-                .findFirst();
-    }
-
+    /**
+     * Найти студента по email
+     */
     public Optional<Student> findByEmail(String email) {
-        System.out.println("🔍 Searching for email: " + email);
-        System.out.println("📋 Total students in list: " + items.size());
-
         return items.stream()
-                .filter(student -> student.getEmail() != null && student.getEmail().equals(email))
+                .filter(student -> student.getEmail().equalsIgnoreCase(email))
                 .findFirst();
     }
 
+    /**
+     * Проверить существование студента по email
+     */
     public boolean existsByEmail(String email) {
         return items.stream()
-                .anyMatch(student -> student.getEmail() != null && student.getEmail().equalsIgnoreCase(email));
+                .anyMatch(student -> student.getEmail().equalsIgnoreCase(email));
     }
 
-    public boolean existsByStudentId(String studentId) {
+    /**
+     * Найти студентов по группе
+     */
+    public List<Student> findByGroupId(String groupId) {
         return items.stream()
-                .anyMatch(student -> student.getId() != null && student.getId().equals(studentId));
+                .filter(student -> groupId.equals(student.getGroupId()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Найти студентов без группы
+     */
+    public List<Student> findStudentsWithoutGroup() {
+        return items.stream()
+                .filter(student -> student.getGroupId() == null || student.getGroupId().isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Добавить ответ студенту
+     */
+    public boolean addSubmission(String studentId, String submissionId) {
+        Optional<Student> studentOpt = findById(studentId);
+
+        if (studentOpt.isPresent()) {
+            Student student = studentOpt.get();
+
+            if (student.getSubmissionID() == null) {
+                student.setSubmissionID(new ArrayList<>());
+            }
+
+            if (!student.getSubmissionID().contains(submissionId)) {
+                student.getSubmissionID().add(submissionId);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Установить группу для студента
+     */
+    public boolean setStudentGroup(String studentId, String groupId) {
+        Optional<Student> studentOpt = findById(studentId);
+
+        if (studentOpt.isPresent()) {
+            Student student = studentOpt.get();
+            student.setGroupId(groupId);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Удалить студента из группы
+     */
+    public boolean removeFromGroup(String studentId) {
+        Optional<Student> studentOpt = findById(studentId);
+
+        if (studentOpt.isPresent()) {
+            Student student = studentOpt.get();
+            student.setGroupId(null);
+            return true;
+        }
+
+        return false;
     }
 }

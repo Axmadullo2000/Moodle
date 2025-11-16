@@ -1,12 +1,13 @@
 package com.university.moodle.model;
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Data
+@Builder
 public class Assignment {
     private String id;
     private String title;
@@ -17,10 +18,6 @@ public class Assignment {
     private Integer maxScore;
     private LocalDateTime createdAt;
     private List<String> submissionID;
+    private String filePath;
 
-    public Assignment() {
-        this.maxScore = 100;
-        this.createdAt = LocalDateTime.now();
-        this.submissionID = new ArrayList<>();
-    }
 }
