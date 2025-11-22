@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.university.moodle.enums.UserRole.STUDENT;
+
 @EqualsAndHashCode(callSuper = true)
 @Data
 @NoArgsConstructor
@@ -17,7 +19,6 @@ public class Student extends User {
 
     public Student(List<String> submissionID) {
         super();
-        setRole(UserRole.STUDENT);
         this.submissionID = submissionID != null ? submissionID : new ArrayList<>();
     }
 

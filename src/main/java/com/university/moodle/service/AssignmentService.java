@@ -1,4 +1,4 @@
-package com.university.service;
+package com.university.moodle.service;
 
 import com.university.moodle.dao.AssignmentDAO;
 import com.university.moodle.dao.GroupDAO;
@@ -7,6 +7,7 @@ import com.university.moodle.model.Assignment;
 import com.university.moodle.model.Group;
 import com.university.moodle.model.Teacher;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,14 +34,14 @@ public class AssignmentService {
         return instance;
     }
 
-    public Assignment createAssignment(
+    public void createAssignment(
             String teacherId,
             String groupId,
             String title,
             String description,
             LocalDateTime deadline,
             Integer maxScore
-    ) {
+    ) throws SQLException {
         Teacher teacher = teacherDAO.findById(teacherId)
                 .orElseThrow(() -> new RuntimeException("Teacher not found"));
 
@@ -62,28 +63,28 @@ public class AssignmentService {
                 .createdAt(deadline)
                 .build();
 
-        Assignment saved = assignmentDAO.save(assignment);
+        assignmentDAO.save(assignment);
 
         // link to group
         if (group.getAssignmentIDs() == null)
             group.setAssignmentIDs(new ArrayList<>());
-        group.getAssignmentIDs().add(saved.getId());
+        group.getAssignmentIDs().add(assignment.getId());
         groupDAO.save(group);
 
         // link to teacher
         if (teacher.getAssignmentID() == null)
             teacher.setAssignmentID(new ArrayList<>());
-        teacher.getAssignmentID().add(saved.getId());
+        teacher.getAssignmentID().add(assignment.getId());
         teacherDAO.save(teacher);
 
-        return saved;
+        return;
     }
 
-    public List<Assignment> getAssignmentsByGroup(String groupId) {
+    public List<Assignment> getAssignmentsByGroup(String groupId) throws SQLException {
         return assignmentDAO.findByGroupId(groupId);
     }
 
-    public List<Assignment> getAssignmentsByTeacher(String teacherId) {
+    public List<Assignment> getAssignmentsByTeacher(String teacherId) throws SQLException {
         return assignmentDAO.findByTeacherId(teacherId);
     }
 }

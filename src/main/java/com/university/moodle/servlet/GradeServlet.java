@@ -1,12 +1,13 @@
 package com.university.moodle.servlet;
 
-import com.university.service.GradingService;
+import com.university.moodle.service.GradingService;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 @WebServlet("/grade")
 public class GradeServlet extends HttpServlet {
@@ -32,7 +33,11 @@ public class GradeServlet extends HttpServlet {
         Integer score = Integer.parseInt(req.getParameter("score"));
         String feedback = req.getParameter("feedback");
 
-        gradingService.gradeSubmission(teacherId, submissionId, score, feedback);
+        try {
+            gradingService.gradeSubmission(teacherId, submissionId, score, feedback);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
 
         resp.sendRedirect("/teacher/submissions?assignmentId=" +
                 req.getParameter("assignmentId"));

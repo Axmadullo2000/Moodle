@@ -13,8 +13,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+
+import static com.university.moodle.enums.UserRole.ADMIN;
 
 @WebServlet("/admin/create-group")
 public class CreateGroupServlet extends HttpServlet {
@@ -29,95 +33,118 @@ public class CreateGroupServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        HttpSession session = req.getSession(false);
+        if (optimizeSession(req, resp)) return;
 
-        if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/index.jsp");
-            return;
+        List<Teacher> teachers;
+        try {
+            teachers = teacherDAO.getItems();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
-
-        User user = (User) session.getAttribute("user");
-
-        if (!"ADMIN".equals(user.getRole().toString())) {
-            resp.sendRedirect(req.getContextPath() + "/profile/");
-            return;
-        }
-
-        List<Teacher> teachers = teacherDAO.getItems();
         req.setAttribute("teachers", teachers);
 
-        req.getRequestDispatcher("/create-group.jsp").forward(req, resp);
+        req.getRequestDispatcher("/admin/create-group.jsp").forward(req, resp);
 
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        HttpSession session = req.getSession(false);
+        if (optimizeSession(req, resp)) return;
 
-        if (session == null || session.getAttribute("user") == null) {
-            resp.sendRedirect(req.getContextPath() + "/index.jsp");
-            return;
-        }
-
-        User user = (User) session.getAttribute("user");
-
-        if (!"ADMIN".equals(user.getRole().toString())) {
-            resp.sendRedirect(req.getContextPath() + "/profile/");
-            return;
-        }
-
+        String id = UUID.randomUUID().toString();
         String groupName = req.getParameter("groupName");
         String description = req.getParameter("description");
         String teacherId = req.getParameter("teacherId");
 
+        System.out.println(id);
+        System.out.println(groupName);
+        System.out.println(description);
+
         if (groupName == null || groupName.trim().isEmpty()) {
             req.setAttribute("error", "Group Name cannot be empty");
-            req.setAttribute("groupName", groupName);
-            req.setAttribute("description", description);
-            req.setAttribute("teacherId", teacherId);
 
-            List<Teacher> teachers = teacherDAO.getItems();
-            req.setAttribute("teachers", teachers);
-
-            req.getRequestDispatcher("create-group.jsp").forward(req, resp);
-
-            return;
+            try {
+                optimizeGroupQueries(req, resp, id, groupName, description, teacherId);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
 
-        if (groupDAO.existsByGroupName(groupName.trim())) {
-            req.setAttribute("error", "Group Name already exists");
-            req.setAttribute("groupName", groupName);
-            req.setAttribute("description", description);
-            req.setAttribute("teacherId", teacherId);
-
-            List<Teacher> teachers = teacherDAO.getItems();
-            req.setAttribute("teachers", teachers);
-
-            req.getRequestDispatcher("create-group.jsp").forward(req, resp);
-            return;
+        try {
+            if (groupDAO.existsByGroupName(groupName != null ? groupName.trim() : "")) {
+                req.setAttribute("error", "Group Name already exists");
+                optimizeGroupQueries(req, resp, id, groupName, description, teacherId);
+                return;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
         Group group = new Group();
 
-        group.setGroupName(groupName.trim());
+        group.setId(id);
+        group.setGroupName(groupName != null ? groupName.trim() : "");
         group.setDescription(description != null ? description.trim() : "");
 
         if (teacherId != null && !teacherId.isEmpty()) {
             group.getTeacherIDs().add(teacherId);
 
-            teacherDAO.findById(teacherId).ifPresent(teacher -> {
-                if (teacher.getGroupID() == null) {
-                    teacher.setGroupID(new ArrayList<>());
-                }
+            try {
+                teacherDAO.findById(teacherId).ifPresent(teacher -> {
+                    if (teacher.getGroupID() == null) {
+                        teacher.setGroupID(new ArrayList<>());
+                    }
 
-                teacher.getGroupID().add(group.getId());
+                    teacher.getGroupID().add(group.getId());
 
-            });
+                });
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
 
         }
 
-        groupDAO.save(group);
+        try {
+            groupDAO.save(group);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
 
         resp.sendRedirect(req.getContextPath() + "/admin/dashboard?success=group_created");
+    }
+
+    private boolean optimizeSession(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        HttpSession session = req.getSession(false);
+
+        if (session == null || session.getAttribute("user") == null) {
+            resp.sendRedirect(req.getContextPath() + "/");
+            return true;
+        }
+
+        User user = (User) session.getAttribute("user");
+
+        if (!ADMIN.equals(user.getRole())) {
+            resp.sendRedirect(req.getContextPath() + "/");
+            return true;
+        }
+
+        return false;
+    }
+
+    private void optimizeGroupQueries(HttpServletRequest req, HttpServletResponse resp, String id, String groupName, String description, String teacherId) throws SQLException, ServletException, IOException {
+        req.setAttribute("id", id);
+        req.setAttribute("groupName", groupName);
+        req.setAttribute("description", description);
+        req.setAttribute("teacherId", teacherId);
+
+        System.out.println(id);
+        System.out.println(groupName);
+        System.out.println(description);
+        System.out.println(teacherId);
+
+        List<Teacher> teachers = teacherDAO.getItems();
+        req.setAttribute("teachers", teachers);
+
+        req.getRequestDispatcher("admin/create-group.jsp").forward(req, resp);
     }
 }

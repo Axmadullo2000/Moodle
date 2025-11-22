@@ -1,11 +1,13 @@
 package com.university.moodle.dao;
 
+import com.university.moodle.config.DbConfig;
 import com.university.moodle.model.Group;
 
+import java.sql.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 public class GroupDAO extends AbstractDAO<Group> {
     private static GroupDAO groupDAO;
@@ -20,11 +22,6 @@ public class GroupDAO extends AbstractDAO<Group> {
     }
 
     @Override
-    public List<Group> getItems() {
-        return new ArrayList<>(items);
-    }
-
-    @Override
     protected void setId(Group group, String id) {
         group.setId(id);
     }
@@ -34,307 +31,396 @@ public class GroupDAO extends AbstractDAO<Group> {
         return group.getId();
     }
 
-    /**
-     * Найти группу по имени
-     */
+    @Override
+    public List<Group> getItems() throws SQLException {
+        return getAll();
+    }
+
+    @Override
+    public void create(Group item) throws SQLException {
+        String sql = """
+            INSERT INTO groups (id, group_name, description, student_ids, teacher_ids, assignment_ids)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """;
+
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, item.getId());
+            stmt.setString(2, item.getGroupName());
+            stmt.setString(3, item.getDescription());
+            stmt.setArray(4, conn.createArrayOf("VARCHAR",
+                    item.getStudentIDs() != null ? item.getStudentIDs().toArray() : new String[0]));
+            stmt.setArray(5, conn.createArrayOf("VARCHAR",
+                    item.getTeacherIDs() != null ? item.getTeacherIDs().toArray() : new String[0]));
+            stmt.setArray(6, conn.createArrayOf("VARCHAR",
+                    item.getAssignmentIDs() != null ? item.getAssignmentIDs().toArray() : new String[0]));
+
+            stmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public void update(Group item) throws SQLException {
+        String sql = """
+            UPDATE groups
+            SET group_name = ?,
+                description = ?,
+                student_ids = ?,
+                teacher_ids = ?,
+                assignment_ids = ?
+            WHERE id = ?""";
+
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, item.getGroupName());
+            stmt.setString(2, item.getDescription());
+            stmt.setArray(3, conn.createArrayOf("VARCHAR",
+                    item.getStudentIDs() != null ? item.getStudentIDs().toArray() : new String[0]));
+            stmt.setArray(4, conn.createArrayOf("VARCHAR",
+                    item.getTeacherIDs() != null ? item.getTeacherIDs().toArray() : new String[0]));
+            stmt.setArray(5, conn.createArrayOf("VARCHAR",
+                    item.getAssignmentIDs() != null ? item.getAssignmentIDs().toArray() : new String[0]));
+            stmt.setString(6, item.getId());
+
+            stmt.executeUpdate();
+        }
+    }
+
+    @Override
+    public void save(Group item) throws SQLException {
+        if (exists(item.getId())) {
+            update(item);
+        } else {
+            create(item);
+        }
+    }
+
+    @Override
+    public List<Group> getAll() throws SQLException {
+        String query = "SELECT * FROM groups ORDER BY group_name";
+        List<Group> groups = new ArrayList<>();
+
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                groups.add(mapResultSetToGroup(rs));
+            }
+        }
+
+        return groups;
+    }
+
+    @Override
+    public List<Group> findAll() {
+        try {
+            return getAll();
+        } catch (SQLException e) {
+            return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public Optional<Group> findById(String id) {
+        String sql = "SELECT * FROM groups WHERE id = ?";
+
+        return getGroupById(id, sql);
+    }
+
+    private Optional<Group> getGroupById(String id, String sql) {
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(mapResultSetToGroup(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return Optional.empty();
+    }
+
+    @Override
+    public boolean exists(String id) {
+        String sql = "SELECT COUNT(*) FROM groups WHERE id = ?";
+
+        return getConnections(id, sql);
+    }
+
+    static boolean getConnections(String id, String sql) {
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
     public Optional<Group> findByGroupName(String groupName) {
-        return items.stream()
-                .filter(group -> group.getGroupName().equalsIgnoreCase(groupName))
-                .findFirst();
+        String sql = "SELECT * FROM groups WHERE group_name ILIKE ?";
+
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, "%" + groupName + "%");
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(mapResultSetToGroup(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return Optional.empty();
     }
 
-    /**
-     * Найти группы по ID учителя
-     */
     public List<Group> findByTeacherId(String teacherId) {
-        return items.stream()
-                .filter(group -> group.getTeacherIDs() != null &&
-                        group.getTeacherIDs().contains(teacherId))
-                .collect(Collectors.toList());
+        String sql = "SELECT * FROM groups WHERE ? = ANY(teacher_ids)";
+        List<Group> groups = new ArrayList<>();
+
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, teacherId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    groups.add(mapResultSetToGroup(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return groups;
     }
 
-    /**
-     * Найти группу по ID студента
-     */
     public Optional<Group> findByStudentId(String studentId) {
-        return items.stream()
-                .filter(group -> group.getStudentIDs() != null &&
-                        group.getStudentIDs().contains(studentId))
-                .findFirst();
+        String sql = "SELECT * FROM groups WHERE ? = ANY(student_ids)";
+
+        return getGroupById(studentId, sql);
     }
 
-    /**
-     * Добавить студента в группу
-     */
     public boolean addStudentToGroup(String groupId, String studentId) {
         Optional<Group> groupOpt = findById(groupId);
 
         if (groupOpt.isPresent()) {
             Group group = groupOpt.get();
 
-            if (group.getStudentIDs() == null) {
-                group.setStudentIDs(new ArrayList<>());
-            }
-
             if (!group.getStudentIDs().contains(studentId)) {
                 group.getStudentIDs().add(studentId);
-                save(group);  // ← ДОБАВЬ ЭТУ СТРОЧКУ!
-                System.out.println("Student " + studentId + " added to group " + groupId);
-                return true;
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
         }
         return false;
     }
 
-    /**
-     * Удалить студента из группы
-     */
     public boolean removeStudentFromGroup(String groupId, String studentId) {
         Optional<Group> groupOpt = findById(groupId);
 
         if (groupOpt.isPresent()) {
             Group group = groupOpt.get();
+            boolean removed = group.getStudentIDs().remove(studentId);
 
-            if (group.getStudentIDs() != null) {
-                boolean removed = group.getStudentIDs().remove(studentId);
-                if (removed) {
-                    save(group);  // ← ДОБАВЬ ЭТУ СТРОЧКУ!
-                    System.out.println("Student " + studentId + " removed from group " + groupId);
+            if (removed) {
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
                 }
-                return removed;
             }
         }
         return false;
     }
 
-    /**
-     * Добавить учителя в группу
-     */
     public boolean addTeacherToGroup(String groupId, String teacherId) {
         Optional<Group> groupOpt = findById(groupId);
 
         if (groupOpt.isPresent()) {
             Group group = groupOpt.get();
 
-            if (group.getTeacherIDs() == null) {
-                group.setTeacherIDs(new ArrayList<>());
-            }
-
             if (!group.getTeacherIDs().contains(teacherId)) {
                 group.getTeacherIDs().add(teacherId);
-                save(group);  // ДОБАВИТЬ!
-                System.out.println("Teacher " + teacherId + " added to group " + groupId);
-                return true;
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
         }
-
         return false;
     }
 
-    /**
-     * Удалить учителя из группы
-     */
     public boolean removeTeacherFromGroup(String groupId, String teacherId) {
         Optional<Group> groupOpt = findById(groupId);
 
         if (groupOpt.isPresent()) {
             Group group = groupOpt.get();
-
-            // ГАРАНТИРУЕМ, что список мутабельный
-            if (group.getTeacherIDs() == null) {
-                group.setTeacherIDs(new ArrayList<>()); // пустой, но изменяемый
-            } else if (!(group.getTeacherIDs() instanceof ArrayList)) {
-                // Если кто-то поставил immutable список — заменяем на ArrayList
-                group.setTeacherIDs(new ArrayList<>(group.getTeacherIDs()));
-            }
-
             boolean removed = group.getTeacherIDs().remove(teacherId);
 
             if (removed) {
-                System.out.println("Teacher " + teacherId + " removed from group " + groupId);
-                save(group); // важно!
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
             }
-            return removed;
+        }
+        return false;
+    }
+
+    public boolean addAssignmentToGroup(String groupId, String assignmentId) {
+        Optional<Group> groupOpt = findById(groupId);
+
+        if (groupOpt.isPresent()) {
+            Group group = groupOpt.get();
+
+            if (!group.getAssignmentIDs().contains(assignmentId)) {
+                group.getAssignmentIDs().add(assignmentId);
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean removeAssignmentFromGroup(String groupId, String assignmentId) {
+        Optional<Group> groupOpt = findById(groupId);
+
+        if (groupOpt.isPresent()) {
+            Group group = groupOpt.get();
+            boolean removed = group.getAssignmentIDs().remove(assignmentId);
+
+            if (removed) {
+                try {
+                    save(group);
+                    return true;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean existsByGroupName(String groupName) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM groups WHERE group_name = ?";
+
+        Connection connection = DbConfig.getConnection();
+
+        PreparedStatement statement = connection.prepareStatement(sql);
+        statement.setString(1, groupName);
+
+        statement.execute();
+        ResultSet rs = statement.getResultSet();
+
+        if (rs.next()) {
+            int count = rs.getInt(1);
+            return count > 0;
         }
 
         return false;
     }
 
-    /**
-     * Добавить задание в группу
-     */
-    // В методе addAssignmentToGroup() — замени полностью на этот:
-    public boolean addAssignmentToGroup(String groupId, String assignmentId) {
-        Optional<Group> opt = findById(groupId);
-        if (opt.isEmpty()) {
-            System.err.println("Группа не найдена по ID: " + groupId);
-            return false;
-        }
-
-        Group group = opt.get();
-
-        if (group.getAssignmentIDs() == null) {
-            group.setAssignmentIDs(new ArrayList<>());
-        }
-
-        if (group.getAssignmentIDs().contains(assignmentId)) {
-            System.out.println("Задание уже есть в группе");
-            save(group); // всё равно сохраняем на всякий
-            return true;
-        }
-
-        boolean add = group.getAssignmentIDs().add(assignmentId);
-        save(group); // ← ЭТО ГЛАВНОЕ
-
-        System.out.println("УСПЕШНО: Задание " + assignmentId + " добавлено в группу " + group.getGroupName() + " (ID: " + groupId + ")");
-        return add;
-    }
-
-    /**
-     * Получить количество студентов в группе
-     */
     public int getStudentCount(String groupId) {
         Optional<Group> groupOpt = findById(groupId);
-
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getStudentIDs() != null ? group.getStudentIDs().size() : 0;
-        }
-
-        return 0;
+        return groupOpt.map(group -> group.getStudentIDs().size()).orElse(0);
     }
 
-    /**
-     * Получить количество учителей в группе
-     */
     public int getTeacherCount(String groupId) {
         Optional<Group> groupOpt = findById(groupId);
-
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getTeacherIDs() != null ? group.getTeacherIDs().size() : 0;
-        }
-
-        return 0;
+        return groupOpt.map(group -> group.getTeacherIDs().size()).orElse(0);
     }
 
-    /**
-     * Проверить существование группы по имени
-     */
-    public boolean existsByGroupName(String groupName) {
-        return items.stream()
-                .anyMatch(group -> group.getGroupName().equalsIgnoreCase(groupName));
-    }
-
-    /**
-     * Удалить студента из всех групп
-     */
-    public void removeStudentFromAllGroups(String studentId) {
-        items.forEach(group -> {
-            if (group.getStudentIDs() != null) {
-                group.getStudentIDs().remove(studentId);
-            }
-        });
-        System.out.println("✅ Student " + studentId + " removed from all groups");
-    }
-
-    /**
-     * Удалить учителя из всех групп
-     */
-    public void removeTeacherFromAllGroups(String teacherId) {
-        items.forEach(group -> {
-            if (group.getTeacherIDs() != null) {
-                group.getTeacherIDs().remove(teacherId);
-            }
-        });
-        System.out.println("✅ Teacher " + teacherId + " removed from all groups");
-    }
-
-    /**
-     * Найти группы без учителей
-     */
-    public List<Group> findGroupsWithoutTeacher() {
-        return items.stream()
-                .filter(group -> group.getTeacherIDs() == null ||
-                        group.getTeacherIDs().isEmpty())
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Найти пустые группы (без студентов)
-     */
     public List<Group> findEmptyGroups() {
-        return items.stream()
-                .filter(group -> group.getStudentIDs() == null ||
-                        group.getStudentIDs().isEmpty())
-                .collect(Collectors.toList());
-    }
+        String sql = "SELECT * FROM groups WHERE array_length(student_ids, 1) IS NULL OR array_length(student_ids, 1) = 0";
+        List<Group> groups = new ArrayList<>();
 
-    /**
-     * Получить всех студентов группы
-     */
-    public List<String> getGroupStudents(String groupId) {
-        Optional<Group> groupOpt = findById(groupId);
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
 
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getStudentIDs() != null ?
-                    new ArrayList<>(group.getStudentIDs()) :
-                    new ArrayList<>();
+            while (rs.next()) {
+                groups.add(mapResultSetToGroup(rs));
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
-        return new ArrayList<>();
+        return groups;
     }
 
-    /**
-     * Получить всех учителей группы
-     */
-    public List<String> getGroupTeachers(String groupId) {
-        Optional<Group> groupOpt = findById(groupId);
+    public boolean delete(String id) {
+        String sql = "DELETE FROM groups WHERE id = ?";
 
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getTeacherIDs() != null ?
-                    new ArrayList<>(group.getTeacherIDs()) :
-                    new ArrayList<>();
-        }
+        try (Connection conn = DbConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-        return new ArrayList<>();
-    }
+            stmt.setString(1, id);
+            return stmt.executeUpdate() > 0;
 
-    /**
-     * Проверить, является ли студент членом группы
-     */
-    public boolean isStudentInGroup(String groupId, String studentId) {
-        Optional<Group> groupOpt = findById(groupId);
-
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getStudentIDs() != null &&
-                    group.getStudentIDs().contains(studentId);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
         return false;
     }
 
-    /**
-     * Проверить, является ли учитель членом группы
-     */
-    public boolean isTeacherInGroup(String groupId, String teacherId) {
-        Optional<Group> groupOpt = findById(groupId);
+    private Group mapResultSetToGroup(ResultSet rs) throws SQLException {
+        return Group.builder()
+                .id(rs.getString("id"))
+                .groupName(rs.getString("group_name"))
+                .description(rs.getString("description"))
+                .studentIDs(convertSqlArrayToList(rs, "student_ids"))
+                .teacherIDs(convertSqlArrayToList(rs, "teacher_ids"))
+                .assignmentIDs(convertSqlArrayToList(rs, "assignment_ids"))
+                .build();
+    }
 
-        if (groupOpt.isPresent()) {
-            Group group = groupOpt.get();
-            return group.getTeacherIDs() != null &&
-                    group.getTeacherIDs().contains(teacherId);
+    private List<String> convertSqlArrayToList(ResultSet rs, String columnLabel) throws SQLException {
+        Array sqlArray = rs.getArray(columnLabel);
+
+        if (sqlArray != null) {
+            String[] array = (String[]) sqlArray.getArray();
+            return new ArrayList<>(Arrays.asList(array));
         }
 
-        return false;
+        return new ArrayList<>();
     }
-
-    @Override
-    public Group save(Group group) {
-        return super.save(group);
-    }
-
 }

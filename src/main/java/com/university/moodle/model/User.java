@@ -5,9 +5,13 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.experimental.SuperBuilder;
+
+import java.time.LocalDateTime;
 
 @Data
 @Setter
+@SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 public abstract class User {
@@ -17,7 +21,9 @@ public abstract class User {
     private String email;
     private String password;
     private UserRole role;
-    private boolean active;
+    private boolean active = true;
+    private LocalDateTime created_at = LocalDateTime.now();
+    private LocalDateTime updated_at  = LocalDateTime.now();
 
     @Override
     public String toString() {

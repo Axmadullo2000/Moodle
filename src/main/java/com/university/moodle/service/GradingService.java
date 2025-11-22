@@ -1,4 +1,4 @@
-package com.university.service;
+package com.university.moodle.service;
 
 import com.university.moodle.dao.AssignmentDAO;
 import com.university.moodle.dao.SubmissionDAO;
@@ -8,6 +8,7 @@ import com.university.moodle.model.Assignment;
 import com.university.moodle.model.Submission;
 import com.university.moodle.model.Teacher;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 
 public class GradingService {
@@ -15,8 +16,7 @@ public class GradingService {
     private final AssignmentDAO assignmentDAO = AssignmentDAO.getInstance();
     private final TeacherDAO teacherDAO = TeacherDAO.getInstance();
 
-    public Submission gradeSubmission(String teacherId, String submissionId, Integer score, String feedback) {
-
+    public void gradeSubmission(String teacherId, String submissionId, Integer score, String feedback) throws SQLException {
         Submission submission = submissionDAO.findById(submissionId)
                 .orElseThrow(() -> new RuntimeException("Submission not found"));
 
@@ -41,6 +41,6 @@ public class GradingService {
         submission.setGradedAt(LocalDateTime.now());
         submission.setGradedId(teacherId);
 
-        return submissionDAO.save(submission);
+        submissionDAO.save(submission);
     }
 }

@@ -1,23 +1,29 @@
 package com.university.moodle.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Group {
     private String id;
     private String groupName;
     private String description;
+    private LocalDateTime created_at = LocalDateTime.now();
+    private LocalDateTime updated_at;
 
-    private List<String> studentIDs = new ArrayList<>();
-    private List<String> teacherIDs = new ArrayList<>();
-    private List<String> assignmentIDs = new ArrayList<>();
+    private List<String> studentIDs;
+    private List<String> teacherIDs;
+    private List<String> assignmentIDs;
 
-    // Защита от null и перезаписи
     public List<String> getAssignmentIDs() {
         if (assignmentIDs == null) assignmentIDs = new ArrayList<>();
         return assignmentIDs;

@@ -1,13 +1,16 @@
 package com.university.moodle.servlet;
 
-import com.university.service.AssignmentService;
+import com.university.moodle.model.Assignment;
+import com.university.moodle.service.AssignmentService;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @WebServlet("/assignments")
 public class AssignmentServlet extends HttpServlet {
@@ -17,7 +20,12 @@ public class AssignmentServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException, IOException {
         String teacherId = (String) req.getSession().getAttribute("userId");
 
-        var list = assignmentService.getAssignmentsByTeacher(teacherId);
+        List<Assignment> list = null;
+        try {
+            list = assignmentService.getAssignmentsByTeacher(teacherId);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
         req.setAttribute("assignments", list);
 
         try {
@@ -38,14 +46,18 @@ public class AssignmentServlet extends HttpServlet {
         String deadline = req.getParameter("deadline");
         Integer maxScore = Integer.parseInt(req.getParameter("maxScore"));
 
-        assignmentService.createAssignment(
-                teacherId,
-                groupId,
-                title,
-                desc,
-                LocalDateTime.parse(deadline),
-                maxScore
-        );
+        try {
+            assignmentService.createAssignment(
+                    teacherId,
+                    groupId,
+                    title,
+                    desc,
+                    LocalDateTime.parse(deadline),
+                    maxScore
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
 
         resp.sendRedirect("/assignments");
     }

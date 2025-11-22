@@ -1,10 +1,7 @@
 package com.university.moodle.servlet;
 
-
-import com.university.moodle.enums.UserRole;
-import com.university.moodle.model.Student;
 import com.university.moodle.model.User;
-import com.university.service.AuthService;
+import com.university.moodle.service.AuthService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -13,15 +10,21 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
-@WebServlet("/auth")
+import static com.university.moodle.enums.UserRole.*;
+
+@WebServlet(urlPatterns = {"/auth", "/"})
 public class AuthServlet extends HttpServlet {
     private AuthService authService;
 
     @Override
     public void init() {
-        authService = AuthService.getInstance();
-        System.out.println("AuthService initialized in AuthServlet");
+        try {
+            authService = AuthService.getInstance();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -35,13 +38,12 @@ public class AuthServlet extends HttpServlet {
         } else if ("register".equals(action)) {
             handleRegistration(request, response);
         } else {
-            sendError(response, "Invalid action", HttpServletResponse.SC_BAD_REQUEST);
+            sendError(response, "Invalid action");
         }
     }
 
     private void handleLogin(HttpServletRequest request, HttpServletResponse response)
             throws IOException, ServletException {
-
         String email = request.getParameter("email");
         String password = request.getParameter("password");
 
@@ -57,20 +59,20 @@ public class AuthServlet extends HttpServlet {
 
             session.setAttribute("user", user);
             session.setAttribute("userId", user.getId());
-            session.setAttribute("role", user.getRole().name());
+            session.setAttribute("role", user.getRole());
             session.setAttribute("fullName", user.getFullName());
 
-            // Перенаправление в зависимости от роли
-            String redirectUrl = switch (user.getRole()) {
-                case TEACHER -> "/teacher/dashboard";
-                case STUDENT -> "/student/assignments";
-                case ADMIN -> "/admin/dashboard";
-                default -> "/";
-            };
+            if (user.getRole().equals(STUDENT)) {
+                response.sendRedirect(request.getContextPath() + "/student/assignments");
+            }else if (user.getRole().equals(TEACHER)) {
+                response.sendRedirect(request.getContextPath() + "/teacher/dashboard");
+            }else if (user.getRole().equals(ADMIN)) {
+                response.sendRedirect(request.getContextPath() + "/admin/dashboard");
+            }else {
+                forwardWithError(request, response, "Invalid role");
+            }
 
-            response.sendRedirect(request.getContextPath() + redirectUrl);
-
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | SQLException e) {
             forwardWithError(request, response, e.getMessage());
         }
     }
@@ -84,36 +86,35 @@ public class AuthServlet extends HttpServlet {
 
         if (email == null || password == null || fullName == null ||
                 email.isBlank() || password.isBlank() || fullName.isBlank()) {
-            sendError(response, "All fields are required", HttpServletResponse.SC_BAD_REQUEST);
+            sendError(response, "All fields are required");
             return;
         }
 
         try {
-            Student student = authService.registerStudent(email, password, fullName);
-            System.out.println("Student registered: " + student.getEmail());
+            User user = authService.registerStudent(email, password, fullName);
 
-            // Автологин после регистрации
             HttpSession session = request.getSession(true);
-            session.setAttribute("userId", student.getId());
-            session.setAttribute("role", UserRole.STUDENT.name());
-            session.setAttribute("fullName", student.getFullName());
+            session.setAttribute("user", user);
+            session.setAttribute("userId", user.getId());
+            session.setAttribute("role", STUDENT.name());
+            session.setAttribute("fullName", user.getFullName());
 
-            response.sendRedirect(request.getContextPath() + "/student/assignments");
-
+            response.sendRedirect(request.getContextPath() + "/");
         } catch (RuntimeException e) {
-            sendError(response, e.getMessage(), HttpServletResponse.SC_BAD_REQUEST);
+            sendError(response, e.getMessage());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    // Утилиты
     private void forwardWithError(HttpServletRequest req, HttpServletResponse resp, String error)
             throws ServletException, IOException {
         req.setAttribute("error", error);
-        req.getRequestDispatcher("/index.jsp").forward(req, resp);
+        req.getRequestDispatcher("/").forward(req, resp);
     }
 
-    private void sendError(HttpServletResponse resp, String message, int status) throws IOException {
-        resp.setStatus(status);
+    private void sendError(HttpServletResponse resp, String message) throws IOException {
+        resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         resp.setContentType("application/json");
         resp.getWriter().write("{\"error\": \"" + message + "\"}");
     }

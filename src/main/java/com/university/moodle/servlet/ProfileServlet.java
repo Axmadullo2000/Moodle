@@ -4,7 +4,7 @@ import com.university.moodle.model.Admin;
 import com.university.moodle.model.Student;
 import com.university.moodle.model.Teacher;
 import com.university.moodle.model.User;
-import com.university.service.AuthService;
+import com.university.moodle.service.AuthService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 @WebServlet("/profile")
 public class ProfileServlet extends HttpServlet {
@@ -20,7 +21,11 @@ public class ProfileServlet extends HttpServlet {
 
     @Override
     public void init() {
-        authService = AuthService.getInstance();
+        try {
+            authService = AuthService.getInstance();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -30,7 +35,7 @@ public class ProfileServlet extends HttpServlet {
         HttpSession session = request.getSession(false);
 
         if (session == null || session.getAttribute("userId") == null) {
-            response.sendRedirect(request.getContextPath() + "/index.jsp");
+            response.sendRedirect(request.getContextPath() + "/");
             return;
         }
 
@@ -38,11 +43,15 @@ public class ProfileServlet extends HttpServlet {
         User user = (User) session.getAttribute("user");
 
         if (user == null) {
-            user = authService.getUserById(userId);
+            try {
+                user = authService.getUserById(userId);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
 
             if (user == null) {
                 session.invalidate();
-                response.sendRedirect(request.getContextPath() + "/index.jsp");
+                response.sendRedirect(request.getContextPath() + "/");
                 return;
             }
         }
@@ -59,11 +68,6 @@ public class ProfileServlet extends HttpServlet {
 
         String role = user.getRole() != null ? user.getRole().toString() : "UNKNOWN";
         request.setAttribute("role", role);
-
-        String initial = user.getFullName() != null && !user.getFullName().isEmpty()
-                ? user.getFullName().substring(0, 1).toUpperCase()
-                : "U";
-        request.setAttribute("initial", initial);
 
         if (user instanceof Student student) {
             request.setAttribute("userType", "student");
@@ -84,17 +88,16 @@ public class ProfileServlet extends HttpServlet {
                     teacher.getGroupID() != null ? teacher.getGroupID().size() : 0);
             request.setAttribute("assignmentCount",
                     teacher.getAssignmentID() != null ? teacher.getAssignmentID().size() : 0);
-        }else if (user instanceof Admin admin) {
+        }else if (user instanceof Admin) {
             request.setAttribute("userType", "admin");
             request.setAttribute("isStudent", false);
             request.setAttribute("isTeacher", false);
             request.setAttribute("isAdmin", true);
-            System.out.println(admin);
         }
         else {
             request.setAttribute("isStudent", false);
         }
 
-        request.getRequestDispatcher("/profile.jsp").forward(request, response);
+        request.getRequestDispatcher("/profile/profile.jsp").forward(request, response);
     }
 }

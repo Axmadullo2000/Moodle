@@ -10,6 +10,8 @@ public class Submission {
     private String id;
     private String assignmentId;
     private String studentId;
+    private String groupId;
+    private String teacherId;
     private String content;
     private String fileUrl;
     private LocalDateTime submittedAt;

@@ -30,20 +30,11 @@ public class LogoutServlet extends HttpServlet {
         HttpSession session = request.getSession(false);
 
         if (session != null) {
-            // Получаем информацию о пользователе перед удалением сессии
-            String userEmail = (String) session.getAttribute("email");
-            String userRole = (String) session.getAttribute("role");
-
-            // Логируем выход
-            if (userEmail != null) {
-                System.out.println("👋 User logged out: " + userEmail + " (Role: " + userRole + ")");
-            }
-
             // Инвалидируем сессию
             session.invalidate();
         }
 
         // Перенаправляем на главную страницу с сообщением
-        response.sendRedirect(request.getContextPath() + "/index.jsp?logout=success");
+        response.sendRedirect(request.getContextPath() + "/?logout=success");
     }
 }

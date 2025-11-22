@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import lombok.SneakyThrows;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -29,15 +30,12 @@ public class StudentSubmissionServlet extends HttpServlet {
         assignmentDAO = AssignmentDAO.getInstance();
     }
 
+    @SneakyThrows
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
         HttpSession session = request.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect(request.getContextPath() + "/index.jsp");
-            return;
-        }
 
         Student student = (Student) session.getAttribute("user");
 
@@ -48,12 +46,12 @@ public class StudentSubmissionServlet extends HttpServlet {
         Map<Submission, Assignment> submissionMap = new LinkedHashMap<>();
 
         for (Submission submission : submissions) {
-            Optional<Assignment> assignmentOpt = assignmentDAO.getById(submission.getAssignmentId());
+            Optional<Assignment> assignmentOpt = assignmentDAO.findById(submission.getAssignmentId());
             assignmentOpt.ifPresent(assignment -> submissionMap.put(submission, assignment));
         }
 
         request.setAttribute("submissionMap", submissionMap);
-        request.getRequestDispatcher("/student-submissions.jsp")
+        request.getRequestDispatcher("/student/student-submissions.jsp")
                 .forward(request, response);
     }
 }

@@ -10,7 +10,6 @@ import jakarta.servlet.http.*;
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -21,164 +20,139 @@ import java.util.UUID;
         maxRequestSize = 1024 * 1024 * 50     // 50MB
 )
 public class UploadAssignmentServlet extends HttpServlet {
+    public static final String UPLOAD_DIR =
+            System.getProperty("user.home") + File.separator + "moodle_uploads";
 
-    private static final String UPLOAD_DIR = "uploads/assignments";
     private final AssignmentDAO assignmentDAO = AssignmentDAO.getInstance();
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        response.setContentType("text/html;charset=UTF-8");
         request.setCharacterEncoding("UTF-8");
+        HttpSession session = request.getSession(false);
+
+        String teacherId = (String) session.getAttribute("userId");
 
         try {
-            // Проверка авторизации
-            HttpSession session = request.getSession(false);
-            if (session == null || session.getAttribute("userId") == null) {
-                response.sendRedirect(request.getContextPath() + "/");
-                return;
-            }
-
-            String teacherId = (String) session.getAttribute("userId");
-            String role = (String) session.getAttribute("role");
-
-            // Проверка роли
-            if (!"TEACHER".equals(role)) {
-                response.sendRedirect(request.getContextPath() + "/");
-                return;
-            }
-
-            // Получение параметров формы
             String groupId = request.getParameter("groupId");
             String title = request.getParameter("title");
             String description = request.getParameter("description");
             String deadlineStr = request.getParameter("deadline");
+            String maxScoreStr = request.getParameter("maxScore");
 
-            // Валидация
-            if (groupId == null || groupId.isEmpty() ||
-                    title == null || title.trim().isEmpty() ||
-                    deadlineStr == null || deadlineStr.isEmpty()) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=Required fields are missing");
-                return;
+            // Валидация обязательных полей
+            if (isEmpty(groupId) || isEmpty(title)) {
+                throw new Exception("Title and group are required");
             }
 
-            // Парсинг deadline
-            LocalDateTime deadline;
-            try {
-                deadline = LocalDateTime.parse(deadlineStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (Exception e) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=Invalid deadline format");
-                return;
+            title = title.trim();
+            if (title.isEmpty()) throw new Exception("Title cannot be empty");
+
+            // Дедлайн — НЕ обязательный
+            LocalDateTime deadline = null;
+            if (!isEmpty(deadlineStr)) {
+                try {
+                    deadline = LocalDateTime.parse(deadlineStr); // datetime-local → ISO формат
+                    if (deadline.isBefore(LocalDateTime.now())) {
+                        throw new Exception("Deadline must be in the future");
+                    }
+                } catch (Exception e) {
+                    throw new Exception("Invalid deadline format. Use correct date and time.");
+                }
             }
 
-            // Проверка что deadline в будущем
-            if (deadline.isBefore(LocalDateTime.now())) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=Deadline must be in the future");
-                return;
+            // Макс. балл
+            int maxScore = 100;
+            if (!isEmpty(maxScoreStr)) {
+                try {
+                    maxScore = Integer.parseInt(maxScoreStr);
+                    if (maxScore < 1 || maxScore > 10000) throw new Exception();
+                } catch (Exception e) {
+                    throw new Exception("Invalid max score");
+                }
             }
 
-            // Загрузка файла
+            // === Файл — ОПЦИОНАЛЬНЫЙ ===
+            String filePath = null;
             Part filePart = request.getPart("file");
-            if (filePart == null || filePart.getSize() == 0) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=File is required");
-                return;
+            if (filePart != null && filePart.getSize() > 0) {
+                String originalName = getSubmittedFileName(filePart);
+                if (!isEmpty(originalName)) {
+                    String ext = "";
+                    int i = originalName.lastIndexOf('.');
+                    if (i > 0) ext = originalName.substring(i).toLowerCase();
+
+                    if (!isAllowedExtension(ext)) {
+                        throw new Exception("File type not allowed. Allowed: pdf, docx, zip, txt");
+                    }
+
+                    // создаём папку, если её нет
+                    File uploadDir = new File(UPLOAD_DIR);
+                    if (!uploadDir.exists()) uploadDir.mkdirs();
+
+                    // уникальное имя файла
+                    String uniqueFileName = UUID.randomUUID().toString() + ext;
+                    String fullPath = UPLOAD_DIR + File.separator + uniqueFileName;
+
+                    // сохраняем файл
+                    filePart.write(fullPath);
+
+                    // в базе сохраняем только имя файла
+                    filePath = uniqueFileName;
+
+                    System.out.println("SAVE >>> " + fullPath);
+                }
             }
 
-            String fileName = getFileName(filePart);
-            if (fileName == null || fileName.isEmpty()) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=Invalid file");
-                return;
-            }
-
-            // Проверка расширения файла
-            String fileExtension = "";
-            int dotIndex = fileName.lastIndexOf(".");
-            if (dotIndex > 0) {
-                fileExtension = fileName.substring(dotIndex).toLowerCase();
-            }
-
-            if (!isAllowedExtension(fileExtension)) {
-                response.sendRedirect(request.getContextPath() +
-                        "/teacher/group?id=" + groupId + "&error=File type not allowed");
-                return;
-            }
-
-            // Создание директории если не существует
-            String applicationPath = request.getServletContext().getRealPath("");
-            String uploadFilePath = applicationPath + File.separator + UPLOAD_DIR;
-            File uploadDir = new File(uploadFilePath);
-            if (!uploadDir.exists()) {
-                uploadDir.mkdirs(); // Создаем директорию, если не существует
-            }
-
-            // Генерация уникального имени файла
-            String uniqueFileName = UUID.randomUUID().toString() + fileExtension;
-            String fullFilePath = uploadFilePath + File.separator + uniqueFileName;
-
-            // Логирование пути сохраненного файла
-            System.out.println("Saving file to: " + fullFilePath);
-
-            // Сохранение файла
-            filePart.write(fullFilePath);
-
-            // Создание объекта Assignment
+            // Создаём задание
             Assignment assignment = Assignment.builder()
-                    .id(null) // ID будет установлен в DAO
-                    .title(title.trim())
+                    .id(UUID.randomUUID().toString())
+                    .title(title)
                     .description(description != null ? description.trim() : "")
                     .teacherId(teacherId)
                     .groupId(groupId)
                     .deadline(deadline)
-                    .maxScore(100) // По умолчанию
+                    .maxScore(maxScore)
                     .createdAt(LocalDateTime.now())
                     .submissionID(new ArrayList<>())
-                    .filePath(UPLOAD_DIR + "/" + uniqueFileName)
+                    .filePath(filePath) // может быть null — это нормально
                     .build();
 
-            // Сохранение в DAO
+            // Сохраняем в базу
             assignmentDAO.save(assignment);
 
-            // Редирект обратно на страницу группы с успехом
-            response.sendRedirect(request.getContextPath() +
-                    "/teacher/group?id=" + groupId + "&success=Assignment uploaded successfully");
+            session.setAttribute("successMessage", "Assignment created successfully!");
+            response.sendRedirect(request.getContextPath() + "/teacher/group?id=" + groupId);
 
         } catch (Exception e) {
             e.printStackTrace();
+            session.setAttribute("errorMessage", "Failed to create assignment: " + e.getMessage());
             String groupId = request.getParameter("groupId");
-            response.sendRedirect(request.getContextPath() +
-                    "/teacher/group?id=" + (groupId != null ? groupId : "") +
-                    "&error=Upload failed: " + e.getMessage());
+            String redirect = "/teacher/create-assignment";
+            if (!isEmpty(groupId)) {
+                redirect = "/teacher/group?id=" + groupId;
+            }
+            response.sendRedirect(request.getContextPath() + redirect);
         }
     }
 
-    /**
-     * Извлекает имя файла из Part header
-     */
-    private String getFileName(Part part) {
-        String contentDisposition = part.getHeader("content-disposition");
-        if (contentDisposition == null) {
-            return null;
-        }
+    private boolean isEmpty(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 
-        String[] items = contentDisposition.split(";");
-        for (String item : items) {
-            if (item.trim().startsWith("filename")) {
-                String filename = item.substring(item.indexOf("=") + 1).trim();
-                return filename.replace("\"", "");
+    private String getSubmittedFileName(Part part) {
+        String contentDisp = part.getHeader("content-disposition");
+        if (contentDisp != null) {
+            for (String cd : contentDisp.split(";")) {
+                if (cd.trim().startsWith("filename")) {
+                    return cd.substring(cd.indexOf('=') + 1).trim().replace("\"", "");
+                }
             }
         }
         return null;
     }
 
-    /**
-     * Проверяет допустимость расширения файла
-     */
     private boolean isAllowedExtension(String extension) {
         return extension.equals(".pdf") ||
                 extension.equals(".docx") ||

@@ -17,180 +17,158 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+
 @WebServlet("/student/submit")
 @MultipartConfig(
-        maxFileSize = 10 * 1024 * 1024,      // 10 MB
-        maxRequestSize = 15 * 1024 * 1024     // 15 MB
+        maxFileSize = 10 * 1024 * 1024,
+        maxRequestSize = 15 * 1024 * 1024
 )
 public class SubmitAssignmentServlet extends HttpServlet {
-    private static final String UPLOAD_DIR = "uploads/assignments";
     private SubmissionDAO submissionDAO;
     private AssignmentDAO assignmentDAO;
 
     @Override
-    public void init() {
+    public void init() throws ServletException {
         submissionDAO = SubmissionDAO.getInstance();
         assignmentDAO = AssignmentDAO.getInstance();
-
-        // Создаём директорию для загрузок, если её нет
-        createUploadDirectory();
     }
+
+    private static final String UPLOAD_DIR =
+            System.getProperty("user.home") + File.separator + "submissions";
+
+    private String handleFileUpload(Part filePart, String studentId, String assignmentId) {
+        try {
+            String originalName = getSubmittedFileName(filePart);
+            if (originalName == null || originalName.isEmpty()) return null;
+
+            String ext = originalName.contains(".")
+                    ? originalName.substring(originalName.lastIndexOf("."))
+                    : "";
+
+            String uniqueName = studentId + "_" + assignmentId + "_" +
+                    UUID.randomUUID().toString().substring(0, 8) + ext;
+
+            // создаём папку, если её нет
+            Path uploadDir = Paths.get(UPLOAD_DIR);
+            Files.createDirectories(uploadDir);
+
+            // путь к файлу
+            Path destination = uploadDir.resolve(uniqueName);
+
+            try (var input = filePart.getInputStream()) {
+                Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            System.out.println("Файл сохранён: " + destination.toAbsolutePath());
+
+            return uniqueName;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
         request.setCharacterEncoding("UTF-8");
-
         HttpSession session = request.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect(request.getContextPath() + "/index.jsp");
-            return;
-        }
-
         Student student = (Student) session.getAttribute("user");
         String assignmentId = request.getParameter("assignmentId");
         String content = request.getParameter("content");
 
-        // Валидация
-        if (assignmentId == null || assignmentId.isBlank()) {
-            sendError(request, response, "Задание не найдено");
+        if (assignmentId == null || content == null || content.trim().length() < 10) {
+            sendError(request, response, "Некорректные данные");
             return;
         }
 
-        Optional<Assignment> assignmentOpt = assignmentDAO.getById(assignmentId);
+        Optional<Assignment> assignmentOpt = assignmentDAO.findById(assignmentId);
         if (assignmentOpt.isEmpty()) {
             sendError(request, response, "Задание не найдено");
             return;
         }
 
         Assignment assignment = assignmentOpt.get();
-
-        // Проверка дедлайна
         if (LocalDateTime.now().isAfter(assignment.getDeadline())) {
             sendError(request, response, "Срок сдачи истёк");
             return;
         }
 
-        // Проверяем, не отправлял ли студент уже ответ
-        Optional<Submission> existingSubmission = submissionDAO.findByAssignmentAndStudent(
-                assignmentId,
-                student.getId()
-        );
-
+        // ===== ИСПРАВКА: Сначала ищем, потом решаем что делать =====
         Submission submission;
-        if (existingSubmission.isPresent()) {
-            // Обновляем существующий ответ
-            submission = existingSubmission.get();
-            submission.setContent(content);
-            submission.setSubmittedAt(LocalDateTime.now());
-            submission.setStatus(SubmissionStatus.PENDING);
-        } else {
-            // Создаём новый ответ
-            submission = new Submission();
-            submission.setAssignmentId(assignmentId);
-            submission.setStudentId(student.getId());
-            submission.setContent(content);
+        boolean isNewSubmission = false;
+
+        try {
+            Optional<Submission> existingOpt = submissionDAO.findByAssignmentAndStudent(assignmentId, student.getId());
+
+            if (existingOpt.isPresent()) {
+                // Обновление существующей отправки
+                submission = existingOpt.get();
+                submission.setContent(content.trim());
+                submission.setSubmittedAt(LocalDateTime.now());
+                submission.setStatus(SubmissionStatus.PENDING);
+            } else {
+                // Новая отправка
+                submission = new Submission();
+                submission.setId(UUID.randomUUID().toString());
+                submission.setAssignmentId(assignmentId);
+                submission.setStudentId(student.getId());
+                submission.setContent(content.trim());
+                submission.setSubmittedAt(LocalDateTime.now());
+                submission.setStatus(SubmissionStatus.PENDING);
+                isNewSubmission = true;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
-        // Обработка файла
+        // === ЗАГРУЗКА ФАЙЛА ===
         Part filePart = request.getPart("file");
         if (filePart != null && filePart.getSize() > 0) {
-            String fileName = handleFileUpload(filePart, student.getId(), assignmentId);
-            if (fileName != null) {
-                submission.setFileUrl(fileName);
+            String savedFileName = handleFileUpload(filePart, student.getId(), assignmentId);
+            if (savedFileName != null) {
+                submission.setFileUrl(savedFileName);
             }
         }
 
-        // Сохраняем в базу
-        if (existingSubmission.isPresent()) {
-            submissionDAO.update(submission);
-        } else {
-            submissionDAO.create(submission);
+        try {
+            if (isNewSubmission) {
+                submissionDAO.create(submission);
+                session.setAttribute("successMessage", "Assignment successfully sent!");
+            } else {
+                submissionDAO.update(submission);
+                session.setAttribute("successMessage", "Assignment successfully updated!");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
-        // Перенаправление с сообщением об успехе
-        session.setAttribute("successMessage", "Задание успешно отправлено!");
         response.sendRedirect(request.getContextPath() + "/student/assignments");
     }
 
-    private String handleFileUpload(Part filePart, String studentId, String assignmentId) {
-        try {
-            String originalFileName = getFileName(filePart);
-            if (originalFileName == null || originalFileName.isEmpty()) {
-                return null;
-            }
-
-            // Генерируем уникальное имя файла
-            String fileExtension = getFileExtension(originalFileName);
-            String uniqueFileName = String.format("%s_%s_%s%s",
-                    studentId,
-                    assignmentId,
-                    UUID.randomUUID().toString().substring(0, 8),
-                    fileExtension
-            );
-
-            // Путь для сохранения
-            String uploadPath = getServletContext().getRealPath("") + File.separator + UPLOAD_DIR;
-            File uploadDir = new File(uploadPath);
-            if (!uploadDir.exists()) {
-                uploadDir.mkdirs();
-            }
-
-            Path filePath = Paths.get(uploadPath, uniqueFileName);
-
-            // Сохраняем файл
-            Files.copy(filePart.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-            return UPLOAD_DIR + "/" + uniqueFileName;
-
-        } catch (IOException e) {
-            System.err.println("Ошибка при загрузке файла: " + e.getMessage());
-            return null;
-        }
-    }
-
-    private String getFileName(Part part) {
-        String contentDisposition = part.getHeader("content-disposition");
-        if (contentDisposition != null) {
-            for (String token : contentDisposition.split(";")) {
-                if (token.trim().startsWith("filename")) {
-                    return token.substring(token.indexOf('=') + 1).trim().replace("\"", "");
-                }
+    private String getSubmittedFileName(Part part) {
+        String header = part.getHeader("content-disposition");
+        if (header == null) return null;
+        for (String partHeader : header.split(";")) {
+            if (partHeader.trim().startsWith("filename")) {
+                String fileName = partHeader.substring(partHeader.indexOf('=') + 1).trim();
+                return fileName.replace("\"", "").replace("'", "");
             }
         }
         return null;
     }
 
-    private String getFileExtension(String fileName) {
-        int lastDotIndex = fileName.lastIndexOf('.');
-        if (lastDotIndex > 0) {
-            return fileName.substring(lastDotIndex);
-        }
-        return "";
-    }
-
-    private void createUploadDirectory() {
-        try {
-            String uploadPath = getServletContext().getRealPath("") + File.separator + UPLOAD_DIR;
-            File uploadDir = new File(uploadPath);
-            if (!uploadDir.exists()) {
-                uploadDir.mkdirs();
-                System.out.println("Создана директория для загрузок: " + uploadPath);
-            }
-        } catch (Exception e) {
-            System.err.println("Не удалось создать директорию для загрузок: " + e.getMessage());
-        }
-    }
-
-    private void sendError(HttpServletRequest request, HttpServletResponse response, String message)
-            throws ServletException, IOException {
-        HttpSession session = request.getSession();
-        session.setAttribute("errorMessage", message);
-        response.sendRedirect(request.getContextPath() + "/student/assignments");
+    private void sendError(HttpServletRequest req, HttpServletResponse resp, String msg)
+            throws IOException {
+        req.getSession().setAttribute("errorMessage", msg);
+        resp.sendRedirect(req.getContextPath() + "/student/assignments");
     }
 }

@@ -1,7 +1,7 @@
 package com.university.moodle.servlet;
 
-import com.university.service.AssignmentService;
-import com.university.service.SubmissionService;
+import com.university.moodle.service.AssignmentService;
+import com.university.moodle.service.SubmissionService;
 import com.university.moodle.model.Assignment;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -13,6 +13,7 @@ import jakarta.servlet.http.Part;
 
 import java.io.File;
 import java.io.IOException;
+import java.sql.SQLException;
 
 @WebServlet("/submit")
 public class SubmissionServlet extends HttpServlet {
@@ -51,13 +52,13 @@ public class SubmissionServlet extends HttpServlet {
             try {
                 Part filePart = req.getPart("file");
                 String fileName = filePart.getSubmittedFileName();
-                String uploadPath = getServletContext().getRealPath("/uploads");
+                String uploadPath = getServletContext().getRealPath("/");
                 File uploadDir = new File(uploadPath);
                 if (!uploadDir.exists()) uploadDir.mkdirs();
 
                 String filePath = uploadPath + File.separator + fileName;
                 filePart.write(filePath);
-                fileUrl = "/uploads/" + fileName; // Сохраняем URL файла
+                fileUrl = "/" + fileName; // Сохраняем URL файла
             } catch (Exception e) {
                 resp.getWriter().write("Ошибка при загрузке файла: " + e.getMessage());
                 return;
@@ -70,6 +71,8 @@ public class SubmissionServlet extends HttpServlet {
             resp.sendRedirect("/student/assignments");
         } catch (RuntimeException e) {
             resp.getWriter().write("Ошибка: " + e.getMessage());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 }

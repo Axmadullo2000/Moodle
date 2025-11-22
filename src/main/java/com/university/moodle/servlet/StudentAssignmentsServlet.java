@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,10 +33,6 @@ public class StudentAssignmentsServlet extends HttpServlet {
             throws ServletException, IOException {
 
         HttpSession session = request.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            response.sendRedirect(request.getContextPath() + "/");
-            return;
-        }
 
         Student student = (Student) session.getAttribute("user");
         String action = request.getParameter("action");
@@ -51,20 +48,27 @@ public class StudentAssignmentsServlet extends HttpServlet {
             throws ServletException, IOException {
 
         // Получаем задания для группы студента
-        List<Assignment> assignments = assignmentDAO.findByGroupId(student.getGroupId());
+        List<Assignment> assignments;
+        assignments = assignmentDAO.findByGroupId(student.getGroupId());
 
         // Добавляем информацию о статусе отправки для каждого задания
         for (Assignment assignment : assignments) {
-            Optional<Submission> submission = submissionDAO.findByAssignmentAndStudent(
-                    assignment.getId(),
-                    student.getId()
-            );
+            Optional<Submission> submission;
+            try {
+                submission = submissionDAO.findByAssignmentAndStudent(
+                        assignment.getId(),
+                        student.getId()
+                );
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+
             assignment.setSubmissionID(submission.map(s -> List.of(s.getId())).orElse(List.of()));
         }
 
         request.setAttribute("assignments", assignments);
         request.setAttribute("studentId", student.getId());
-        request.getRequestDispatcher("/student-assignments.jsp")
+        request.getRequestDispatcher("/student/student-assignments.jsp")
                 .forward(request, response);
     }
 
@@ -77,7 +81,7 @@ public class StudentAssignmentsServlet extends HttpServlet {
             return;
         }
 
-        Optional<Assignment> assignmentOpt = assignmentDAO.getById(assignmentId);
+        Optional<Assignment> assignmentOpt = assignmentDAO.findById(assignmentId);
         if (assignmentOpt.isEmpty()) {
             response.sendRedirect(request.getContextPath() + "/student/assignments");
             return;
@@ -86,14 +90,19 @@ public class StudentAssignmentsServlet extends HttpServlet {
         Assignment assignment = assignmentOpt.get();
 
         // Проверяем, есть ли уже отправленный ответ
-        Optional<Submission> submissionOpt = submissionDAO.findByAssignmentAndStudent(
-                assignmentId,
-                student.getId()
-        );
+        Optional<Submission> submissionOpt;
+        try {
+            submissionOpt = submissionDAO.findByAssignmentAndStudent(
+                    assignmentId,
+                    student.getId()
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
 
         request.setAttribute("assignment", assignment);
         request.setAttribute("submission", submissionOpt.orElse(null));
-        request.getRequestDispatcher("/submit-assignment.jsp")
+        request.getRequestDispatcher("/student/submit-assignment.jsp")
                 .forward(request, response);
     }
 }

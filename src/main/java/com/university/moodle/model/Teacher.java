@@ -1,15 +1,17 @@
 package com.university.moodle.model;
 
 import com.university.moodle.enums.UserRole;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.university.moodle.enums.UserRole.TEACHER;
+
 @EqualsAndHashCode(callSuper = true)
 @Data
+@Builder
+@AllArgsConstructor
 @NoArgsConstructor
 public class Teacher extends User {
     private String specialization;
@@ -18,8 +20,7 @@ public class Teacher extends User {
 
     public Teacher(List<String> groupID, List<String> assignmentID) {
         super();
-        setRole(UserRole.TEACHER);
-        this.groupID = groupID != null ? groupID : new ArrayList<String>();
+        this.groupID = groupID != null ? groupID : new ArrayList<>();
         this.assignmentID = assignmentID;
     }
 

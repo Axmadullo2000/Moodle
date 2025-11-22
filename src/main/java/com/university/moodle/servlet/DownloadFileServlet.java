@@ -5,98 +5,108 @@ import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 @WebServlet("/download")
 public class DownloadFileServlet extends HttpServlet {
+    /*private static final String TEACHER_UPLOAD_DIR =
+            System.getProperty("user.home") + File.separator + "moodle_uploads";
+
+    private static final String STUDENT_UPLOAD_DIR =
+            System.getProperty("user.home") + File.separator + "submissions";
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        // Проверка авторизации
-        HttpSession session = request.getSession(false);
-        if (session == null || session.getAttribute("userId") == null) {
-            response.sendRedirect(request.getContextPath() + "/");
+        String fileName = request.getParameter("file");
+        if (fileName == null || fileName.isEmpty()) {
+            response.getWriter().println("Missing file parameter");
             return;
         }
 
-        // Получаем путь к файлу из параметра запроса
-        String filePath = request.getParameter("file");
+        File downloadFile;
+        if (fileName.startsWith("submissions/")) {
+            downloadFile = new File(STUDENT_UPLOAD_DIR, fileName.substring("submissions/".length()));
+        } else {
+            downloadFile = new File(TEACHER_UPLOAD_DIR, fileName);
+        }
 
-        if (filePath == null || filePath.isEmpty()) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "File path is required");
+        if (!downloadFile.exists()) {
+            response.getWriter().println("File not found: " + downloadFile.getAbsolutePath());
             return;
         }
 
-        // Защита от path traversal атак
-        if (filePath.contains("..") || filePath.contains("\\..") || filePath.contains("/..")) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid file path");
-            return;
-        }
+        String mimeType = getServletContext().getMimeType(downloadFile.getName());
+        if (mimeType == null) mimeType = "application/octet-stream";
 
-        // Получаем полный путь к файлу
-        String applicationPath = request.getServletContext().getRealPath("");
-        String fullFilePath = applicationPath + File.separator + filePath;
-
-        File file = new File(fullFilePath);
-
-        // Проверяем существование файла
-        if (!file.exists() || !file.isFile()) {
-            response.sendError(HttpServletResponse.SC_NOT_FOUND, "File not found");
-            return;
-        }
-
-        // Проверяем, что файл находится в разрешенной директории (uploads)
-        if (!filePath.startsWith("uploads/")) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied");
-            return;
-        }
-
-        // Получаем оригинальное имя файла (последняя часть пути)
-        String fileName = file.getName();
-
-        // Определяем MIME тип
-        String mimeType = getServletContext().getMimeType(fullFilePath);
-        if (mimeType == null) {
-            mimeType = "application/octet-stream"; // Если MIME тип не определен, то используем тип по умолчанию
-        }
-
-        // Устанавливаем заголовки ответа
         response.setContentType(mimeType);
-        response.setContentLengthLong(file.length());
-
-        // Кодируем имя файла для корректного отображения кириллицы
-        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8.toString())
-                .replaceAll("\\+", "%20");
-
+        response.setContentLengthLong(downloadFile.length());
         response.setHeader("Content-Disposition",
-                "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''" + encodedFileName);
+                "attachment; filename=\"" + downloadFile.getName() + "\"");
 
-        // Читаем и отправляем файл
-        try (FileInputStream inStream = new FileInputStream(file);
+        try (FileInputStream inStream = new FileInputStream(downloadFile);
              OutputStream outStream = response.getOutputStream()) {
 
             byte[] buffer = new byte[4096];
             int bytesRead;
-
             while ((bytesRead = inStream.read(buffer)) != -1) {
-                outStream.write(buffer, 0, bytesRead); // Записываем файл в ответ
+                outStream.write(buffer, 0, bytesRead);
             }
+        }
+    }*/
 
-            outStream.flush(); // Отправляем оставшиеся данные
+    // Папки для файлов
+    private static final String TEACHER_DIR =
+            System.getProperty("user.home") + File.separator + "moodle_uploads";
+    private static final String STUDENT_DIR =
+            System.getProperty("user.home") + File.separator + "submissions";
 
-        } catch (IOException e) {
-            e.printStackTrace();
-            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                    "Error downloading file: " + e.getMessage());
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+
+        String fileName = request.getParameter("file");
+        String type = request.getParameter("type"); // "teacher" или "student"
+
+        if (fileName == null || fileName.isEmpty()) {
+            response.getWriter().println("Missing file parameter");
+            return;
+        }
+
+        // Определяем папку
+        String baseDir = TEACHER_DIR;
+        if ("student".equals(type)) {
+            baseDir = STUDENT_DIR;
+        }
+
+        File downloadFile = new File(baseDir, fileName);
+        if (!downloadFile.exists()) {
+            response.getWriter().println("File not found: " + downloadFile.getAbsolutePath());
+            return;
+        }
+
+        // Отдаём файл
+        try (var in = new FileInputStream(downloadFile);
+             var out = response.getOutputStream()) {
+
+            String mimeType = getServletContext().getMimeType(fileName);
+            if (mimeType == null) mimeType = "application/octet-stream";
+
+            response.setContentType(mimeType);
+            response.setContentLengthLong(downloadFile.length());
+            response.setHeader("Content-Disposition",
+                    "attachment; filename=\"" + downloadFile.getName() + "\"");
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
         }
     }
 }

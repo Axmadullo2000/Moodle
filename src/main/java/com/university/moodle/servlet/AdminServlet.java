@@ -2,7 +2,7 @@ package com.university.moodle.servlet;
 
 import com.university.moodle.model.Teacher;
 import com.university.moodle.model.User;
-import com.university.service.AuthService;
+import com.university.moodle.service.AuthService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 @WebServlet("/admin/")
 public class AdminServlet extends HttpServlet {
@@ -18,7 +19,11 @@ public class AdminServlet extends HttpServlet {
 
     @Override
     public void init() {
-        authService = AuthService.getInstance();
+        try {
+            authService = AuthService.getInstance();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -46,10 +51,8 @@ public class AdminServlet extends HttpServlet {
             response.setContentType("application/json; charset=UTF-8");
             response.setStatus((HttpServletResponse.SC_BAD_REQUEST));
             response.getWriter().write("{\"success\": false, \"message\": \"" + e.getMessage() + "\"}");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
-
-
-
-
 }

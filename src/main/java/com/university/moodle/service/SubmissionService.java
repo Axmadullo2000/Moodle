@@ -1,4 +1,4 @@
-package com.university.service;
+package com.university.moodle.service;
 
 import com.university.moodle.dao.AssignmentDAO;
 import com.university.moodle.dao.StudentDAO;
@@ -8,6 +8,7 @@ import com.university.moodle.model.Assignment;
 import com.university.moodle.model.Student;
 import com.university.moodle.model.Submission;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,8 +29,7 @@ public class SubmissionService {
         }
     }
 
-    public Submission submitAssignment(String assignmentId, String studentId, String content, String fileUrl) {
-
+    public void submitAssignment(String assignmentId, String studentId, String content, String fileUrl) throws SQLException {
         Assignment assignment = assignmentDAO.findById(assignmentId)
                 .orElseThrow(() -> new RuntimeException("Assignment not found"));
 
@@ -52,31 +52,29 @@ public class SubmissionService {
         submission.setFileUrl(fileUrl);
         submission.setStatus(SubmissionStatus.SUBMITTED);
 
-        Submission saved = submissionDAO.save(submission);
+        submissionDAO.save(submission);
 
         // привязка к assignment
         if (assignment.getSubmissionID() == null) assignment.setSubmissionID(new ArrayList<>());
-        assignment.getSubmissionID().add(saved.getId());
+        assignment.getSubmissionID().add(submission.getId());
         assignmentDAO.save(assignment);
 
         // привязка к student
         if (student.getSubmissionID() == null) student.setSubmissionID(new ArrayList<>());
-        student.getSubmissionID().add(saved.getId());
+        student.getSubmissionID().add(submission.getId());
         studentDAO.save(student);
-
-        return saved;
     }
 
-    public List<Submission> getSubmissionsByAssignment(String assignmentId) {
+    public List<Submission> getSubmissionsByAssignment(String assignmentId) throws SQLException {
         return submissionDAO.findByAssignmentId(assignmentId);
     }
 
-    public List<Submission> getSubmissionsByStudent(String studentId) {
+    public List<Submission> getSubmissionsByStudent(String studentId) throws SQLException {
         return submissionDAO.findByStudent(studentId);
     }
 
 
-    public void gradeSubmission(String submissionId, int grade) {
+    public void gradeSubmission(String submissionId, int grade) throws SQLException {
         Submission submission = submissionDAO.findById(submissionId)
                 .orElseThrow(() -> new RuntimeException("Submission not found"));
 

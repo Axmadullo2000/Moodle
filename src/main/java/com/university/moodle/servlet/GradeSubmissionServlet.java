@@ -1,6 +1,6 @@
 package com.university.moodle.servlet;
 
-import com.university.service.SubmissionService;
+import com.university.moodle.service.SubmissionService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 @WebServlet("/teacher/grade-submission")
 public class GradeSubmissionServlet extends HttpServlet {
@@ -32,6 +33,8 @@ public class GradeSubmissionServlet extends HttpServlet {
         } catch (NumberFormatException e) {
             resp.sendError(400, "Invalid grade format");
             return;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
         // Редирект обратно на страницу submissions
